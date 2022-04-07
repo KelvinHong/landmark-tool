@@ -1,3 +1,5 @@
+from tkinter.tix import WINDOW
+from urllib.parse import _NetlocResultMixinBytes
 from utils import *
 from PIL import Image
 import io
@@ -5,7 +7,15 @@ import os
 import pandas as pd
 import numpy as np
 import json
-
+import screeninfo
+# Detect double monitor
+monitors = screeninfo.get_monitors()
+if len(monitors) >= 2:
+    w1, h1 = monitors[0].width, monitors[0].height
+    w2, h2 = monitors[1].width, monitors[1].height
+    WINDOW_LOC = (w1 + int(w2/8), int(h1/8))
+else:
+    WINDOW_LOC = (None, None)
 # The StateMachine functions is to keep track of the graph
 # and to keep function call and future modification easier to implement.
 # The StateMachine functions are a bit repeat themselves, 
@@ -25,6 +35,8 @@ class WindowStateMachine():
         self.image_gap = data["image_gap"]
         self.column_width = data["column_width"]
         self.dynamic_lm = data["dynamic_lm"]
+        self.shift_mode = data["shift_mode"]
+        self.store_mouse = None # For storing mouse location in shift_mode
         # Load num_lm correctly if user have annotated in last session
         image_name = self.all_image_rel_paths[self.pointer]
         with open(self.annotation_json, "r") as f:
@@ -60,7 +72,7 @@ class WindowStateMachine():
             data = output.getvalue()
         # Load image to graph
         graph = self.window["-GRAPH-"]
-        graph.DrawImage(data = data, location= (0, self.image_gap))
+        graph.DrawImage(data = data, location= (0, 0))
         # If request is redo, do not load from JSON
         if request == "redo":
             self.num_lm = 0
@@ -92,18 +104,41 @@ class WindowStateMachine():
     
     def load_template(self):
         if hasattr(self, "template_file"):
-            image = Image.open(self.template_file)
+            try:
+                image = Image.open(self.template_file)
+            except:
+                sg.popup("The file you provided is not an image file. ", location=WINDOW_LOC)
+                return False
             image.thumbnail(self.window["-TEMPLATE-IMG-"].Size)
             bio = io.BytesIO()
             image.save(bio, format="PNG")
             self.window["-TEMPLATE-IMG-"].update(filename=None,data=bio.getvalue())
             self.window["-TEMPLATE-FILE-"].update(self.template_file)
-
+            return True
+            
     def window_init(self):
+        # Fill mouse_xy in json file
+        self.fill_json()
         # renew window
         self.renew_annotate()
         # Load template file if exists
         self.load_template()
+
+    def fill_json(self):
+        with open(self.annotation_json, "r") as f:
+            data = json.load(f)
+        for img_name, coor_info in data.items():
+            if coor_info["xy"] == []:
+                data[img_name]["mouse_xy"] = []
+                continue
+            im = Image.open(os.path.join(self.dir, img_name))
+            w, h = im.size
+            np_coorinfo = np.array(coor_info["xy"]) # Size (n, 2)
+            mouses = np.zeros(np_coorinfo.shape)
+            mouses[:, 0] = (np_coorinfo[:, 0] * self.image_gap / w).round()
+            mouses[:, 1] = (np_coorinfo[:, 1] * self.image_gap / h).round()
+            data[img_name]["mouse_xy"] = list(mouses)
+        pretty_dump(data, self.annotation_json)
 
     def renew_annotate(self, request = None):
         """
@@ -117,8 +152,18 @@ class WindowStateMachine():
             Update Landmark and its progress bar (if not dynamic lm)
         """
         img_path = self.load_image(request = request)
-
         total_image_num = self.total_num_images
+        # Disable arrow button if first or last
+        # Next button style
+        if self.pointer == total_image_num - 1:
+            self.window['-NEXT-'].update(disabled=True)
+        else:
+            self.window['-NEXT-'].update(disabled=False)
+        # Prev button style
+        if self.pointer == 0:
+            self.window['-PREV-'].update(disabled=True)
+        else:
+            self.window['-PREV-'].update(disabled=False)
         if not self.dynamic_lm:
             self.window["-LMPROGRESS-"].update(f"Landmark Progress: {self.num_lm}/{self.total_num_lm}")
             self.window["-LBAR-"].update(current_count = self.num_lm, max = self.total_num_lm)
@@ -132,12 +177,18 @@ class WindowStateMachine():
         x, y = mouse[0], mouse[1]
         ori_w, ori_h = self.image_original
         x = int(x * ori_w / self.image_gap)
-        y = ori_h - int(y * ori_h / self.image_gap) # Because PySimpleGUI graph use bottom-left origin setting.
+        y = int(y * ori_h / self.image_gap) 
         return x,y
+    
+    def xy_to_mouse(self, xy):
+        ori_w, ori_h = self.image_original
+        mouse_x = int(xy[0] * self.image_gap / ori_w)
+        mouse_y = int(xy[1] * self.image_gap / ori_h)
+        return mouse_x, mouse_y
 
     def plot_point(self, mouse):
         if not self.dynamic_lm and self.num_lm == self.total_num_lm:
-            sg.popup(f"You've annotated the last landmark.\nPlease proceed to next image.")
+            sg.popup(f"You've annotated the last landmark.\nPlease proceed to next image.", location = WINDOW_LOC)
             return 
         x, y = self.mouse_to_xy(mouse)
         # num_lm increment
@@ -172,7 +223,7 @@ class WindowStateMachine():
             else:
                 self.window["-ANNOPROGRESS-"].update(f"Annotation Progress: {self.pointer+1}/{self.total_num_images}")
                 self.window["-PBAR-"].update(current_count = self.pointer+1, max = self.total_num_images)
-                sg.popup("This is the last image.\nTo safely exit this program, please click the Save button.")
+                sg.popup("This is the last image.\nTo safely exit this program, please click the Save button.", location=WINDOW_LOC)
                 return 
         # Landmark insufficient
         elif self.num_lm != self.total_num_lm:
@@ -208,9 +259,15 @@ class WindowStateMachine():
                 self.window["-ANNOPROGRESS-"].update(f"Annotation Progress: {self.pointer+1}/{self.total_num_images}")
                 self.window["-PBAR-"].update(current_count = self.pointer+1, max = self.total_num_images)
                 return self.unfinish_images_prompt()
+        # If Last image, disable next button
+        if self.pointer == self.total_num_images - 1:
+            self.window['-NEXT-'].update(disabled=True)
+        # Coming from first to second image, enable prev button
+        if self.pointer == 1:
+            self.window['-PREV-'].update(disabled=False)
     
     def unfinish_images_prompt(self):
-        response = sg.popup_yes_no("All images have been annotated. Please check for unfinished images. Do you wish to quit now? ")
+        response = sg.popup_yes_no("All images have been annotated. Please check for unfinished images. Do you wish to quit now? ", location=WINDOW_LOC)
         if response == "Yes":
             response2 = self.save_session()
             if response2 == "Yes":
@@ -230,6 +287,22 @@ class WindowStateMachine():
         data.update({img_name: values_dict})
         # Save to json
         pretty_dump(data, self.annotation_json)
+
+    def renew_graph(self):
+        img_name = self.all_image_rel_paths[self.pointer]
+        # Load current image for user to annotate
+        im = Image.open(os.path.join(self.dir, img_name))
+        w, h = im.size
+        im = im.resize((self.image_gap, self.image_gap), resample = Image.BICUBIC)
+        with io.BytesIO() as output:
+            im.save(output, format="PNG")
+            data = output.getvalue()
+        # Load image to graph
+        graph = self.window["-GRAPH-"]
+        graph.DrawImage(data = data, location= (0, 0))
+        for landmark in self.real_mouses:
+            graph.draw_circle(tuple(landmark[1:]), 10, fill_color='lightgreen', line_color='darkgreen', line_width=2)
+            graph.draw_text(landmark[0], tuple(landmark[1:]))
 
     def table_prompt(self, message: str):
         self.window["-TABLEPROMPT-"].Update(message, visible=True)
@@ -258,12 +331,10 @@ class WindowStateMachine():
             data = output.getvalue()
         # Load image to graph
         graph = self.window["-GRAPH-"]
-        graph.DrawImage(data = data, location= (0, self.image_gap))
+        graph.DrawImage(data = data, location= (0, 0))
         # Plot previous points
-        graph = self.window["-GRAPH-"]
-        for landmark in self.real_mouses:
-            graph.draw_circle(landmark[1:], 10, fill_color='lightgreen', line_color='darkgreen', line_width=2)
-            graph.draw_text(landmark[0], landmark[1:])
+        self.renew_graph()
+        
         # Update landmark progress text and bar.
         if self.dynamic_lm:
             self.window["-LMPROGRESS-"].Update(f"Landmark Progress: {self.num_lm}")    
@@ -280,6 +351,12 @@ class WindowStateMachine():
         # Renew windows on previous image
         self.pointer -= 1
         self.renew_annotate()
+        # If First image, disable next button
+        if self.pointer == 0:
+            self.window['-PREV-'].update(disabled=True)
+        # Coming from last to second last, enable next
+        if self.pointer == self.total_num_images - 2:
+            self.window['-NEXT-'].update(disabled=False)
 
     def generate_csv(self):
         with open(self.annotation_json, "r") as f:
@@ -307,6 +384,62 @@ class WindowStateMachine():
         df.to_csv(csv_filename, index=False)
         return csv_filename
 
+    def cancel_shift(self):
+        graph = self.window["-GRAPH-"]
+        graph.draw_circle(tuple(self.store_mouse[1]), 10, fill_color='lightgreen', line_color='green', line_width=2)
+        graph.draw_text(self.store_mouse[0], tuple(self.store_mouse[1]))
+        number = self.store_mouse[0]
+        table = self.window['-LMTABLE-']
+        table.update(row_colors = [[number-1, table.BackgroundColor]])
+        self.store_mouse = None
+        self.window['-SHIFT-PROMPT-'].Update("Choose a point to move", visible=True) 
+
+    def move_point(self, mouse):
+        # Assuming mouse is not (None, None)
+
+        # No landmark on the graph, return immediately
+        if self.num_lm == 0:
+            # Clear mouse location 
+            self.store_mouse = None
+            return 
+        # When store_mouse is None find nearest point based on mouse location 
+        if self.store_mouse is None:
+            mouses = np.array([real_mouse[1:] for real_mouse in self.real_mouses]) # Shape (N, 2)
+            diffs = mouses - np.array(mouse)
+            # Find nearest point
+            indmin = np.argmin(diffs[:, 0] ** 2 + diffs[:, 1] ** 2)
+            # Change the landmark color and store into store_mouse
+            self.store_mouse = (indmin+1, mouses[indmin])
+            # Change the row color of table
+            self.window['-LMTABLE-'].Update(row_colors=[[indmin,'#6A0DAD']])
+            # Plot point on image
+            graph = self.window["-GRAPH-"]
+            graph.draw_circle(tuple(self.store_mouse[1]), 10, fill_color='purple', line_color='#6A0DAD', line_width=2)
+            graph.draw_text(self.store_mouse[0], tuple(self.store_mouse[1]), color="white")
+            # Update prompt
+            self.window['-SHIFT-PROMPT-'].Update("Choose a destination\nEsc to cancel", visible=True) 
+        # When store_mouse is not None, use its index to place new point.
+        else:
+            number = self.store_mouse[0]
+            # self.real_mouses and renew graph and table
+            self.real_mouses[number-1] = [number, *mouse]
+            self.renew_graph()
+            x,y = self.mouse_to_xy(mouse)
+            table = self.window["-LMTABLE-"]
+            values = table.Values
+            values[number-1] = [number, x, y]
+            table.update(values = values, row_colors = [[number-1, table.BackgroundColor]])
+            # Update prompt
+            self.window['-SHIFT-PROMPT-'].Update("Choose a point to move", visible=True) 
+            # Clear store_mouse
+            self.store_mouse = None
+            
+            
+            
+
+
+
+
     def save_session(self):
         # Record where user at
         with open(CACHE, "r") as f:
@@ -317,18 +450,18 @@ class WindowStateMachine():
         self.record()
         # Convert json file into csv file
         csv_filename = self.generate_csv()
-        response = sg.popup_yes_no(f"Annotation file saved! View it in {csv_filename}.\nDo you wish to quit?")
+        response = sg.popup_yes_no(f"Annotation file saved! View it in {csv_filename}.\nDo you wish to quit?", location=WINDOW_LOC)
         return response
     
     def popup_with_confirm_and_ignore(self, message: str):
         if self.ignore_warning1:
             return "Yes"
         layout = [
-            [sg.Text(message)],
+            [sg.Text(message)], 
             [sg.Checkbox("I understand, do not show this warning again.", key="-CHECK-")],
             [sg.Button("OK"), sg.Button("Cancel")]
         ]
-        window = sg.Window("Warning", layout)
+        window = sg.Window("Warning", layout, location=WINDOW_LOC)
         while True:
             event, values = window.read()
             if event == sg.WIN_CLOSED: # if user closes window or clicks cancel

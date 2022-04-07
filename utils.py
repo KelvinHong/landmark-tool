@@ -54,17 +54,34 @@ def to_json(o, level=0):
         raise TypeError("Unknown type '%s' for json serialization" % str(type(o)))
     return ret
 
-def inspect_annotation_json(Dir, num_lm) -> Tuple[str, bool]:
+def inspect_annotation_json(Dir, num_lm, WINDOW_LOC = (None, None)) -> Tuple[str, bool]:
+    annotation_csv = os.path.join(ANNOTATION, os.path.basename(Dir) + ".csv")
     annotation_json = os.path.join(ANNOTATION, os.path.basename(Dir) + ".json")
     
-    if not os.path.isfile(annotation_json):
+    if not os.path.isfile(annotation_json) or not os.path.isfile(annotation_csv):
         # Create empty json file
         pretty_dump({}, annotation_json)
-        return annotation_json, True
-    else:
-        # Check whether number of landmark is compatible with existing csv.
-        sg.popup(f"The annotation file already exists.\nNew data will be appended in this file.")
-        return annotation_json, False
+    # If csv exist, load json from csv.
+    # Since we don't know window size yet, only load "xy".
+    # Will load "mouse_xy" once StateMachine is initiated.
+    if os.path.isfile(annotation_csv):
+        dic = {}
+        df = pd.read_csv(annotation_csv, header = 0)
+        n = len(df)
+        for i in range(n):
+            row = df.iloc[i]
+            xy_data = []
+            j = 1
+            row_keys = list(row.keys())
+            while True:
+                if f"x{j}" not in row_keys or pd.isnull(row[f"x{j}"]):
+                    break
+                xy_data.append([int(row[f"x{j}"]), int(row[f"y{j}"])])
+                j += 1
+            dic[row["image_name"]] = {"xy": xy_data}
+        pretty_dump(dic, annotation_json)
+    return annotation_json
+
 
 def pretty_dump(data: dict, filename: str):
     json_string = to_json(data)

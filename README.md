@@ -52,3 +52,8 @@ The `x,y` coordinates are recorded with top-left origin, which means the top-lef
 
 The objective is to produce this csv file, so you can further process it to suit your need. 
 For example, you can extend the columns of csv file to contain visible flags of each landmark, which is meaningful during data augmentation. 
+
+## What's new 
+
+7 Apr 2022: Added "Shifting Mode", so user can adjust the location 
+of any landmark, not just the last landmark. It is purple themed so everything purple colored is related to Shifting Mode. 
