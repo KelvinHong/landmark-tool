@@ -14,7 +14,8 @@ INDENT = 4
 SPACE = " "
 NEWLINE = "\n"
 
-# This program includes software developed by jterrace and David Kim 
+
+# This program includes software developed by jterrace and David Kim
 # in https://stackoverflow.com/questions/10097477/python-json-array-newlines
 # Huge thanks to them!
 # Changed basestring to str, and dict uses items() instead of iteritems().
@@ -47,18 +48,23 @@ def to_json(o, level=0):
     elif isinstance(o, np.ndarray) and np.issubdtype(o.dtype, np.integer):
         ret += "[" + ','.join(map(str, o.flatten().tolist())) + "]"
     elif isinstance(o, np.ndarray) and np.issubdtype(o.dtype, np.inexact):
-        ret += "[" + ','.join(map(lambda x: '%.7g' % x, o.flatten().tolist())) + "]"
+        ret += "[" + ','.join(map(lambda x: '%.7g' % x,
+                                  o.flatten().tolist())) + "]"
     elif o is None:
         ret += 'null'
     else:
-        raise TypeError("Unknown type '%s' for json serialization" % str(type(o)))
+        raise TypeError("Unknown type '%s' for json serialization" %
+                        str(type(o)))
     return ret
 
-def inspect_annotation_json(Dir, num_lm, WINDOW_LOC = (None, None)) -> Tuple[str, bool]:
+
+def inspect_annotation_json(
+    Dir, num_lm, WINDOW_LOC=(None, None)) -> Tuple[str, bool]:
     annotation_csv = os.path.join(ANNOTATION, os.path.basename(Dir) + ".csv")
     annotation_json = os.path.join(ANNOTATION, os.path.basename(Dir) + ".json")
-    
-    if not os.path.isfile(annotation_json) or not os.path.isfile(annotation_csv):
+
+    if not os.path.isfile(annotation_json) or not os.path.isfile(
+            annotation_csv):
         # Create empty json file
         pretty_dump({}, annotation_json)
     # If csv exist, load json from csv.
@@ -66,7 +72,7 @@ def inspect_annotation_json(Dir, num_lm, WINDOW_LOC = (None, None)) -> Tuple[str
     # Will load "mouse_xy" once StateMachine is initiated.
     if os.path.isfile(annotation_csv):
         dic = {}
-        df = pd.read_csv(annotation_csv, header = 0)
+        df = pd.read_csv(annotation_csv, header=0)
         n = len(df)
         for i in range(n):
             row = df.iloc[i]
