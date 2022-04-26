@@ -9,13 +9,13 @@ import numpy as np
 import json
 import screeninfo
 # Detect double monitor
-monitors = screeninfo.get_monitors()
-if len(monitors) >= 2:
-    w1, h1 = monitors[0].width, monitors[0].height
-    w2, h2 = monitors[1].width, monitors[1].height
-    WINDOW_LOC = (w1 + int(w2 / 8), int(h1 / 8))
-else:
-    WINDOW_LOC = (None, None)
+# monitors = screeninfo.get_monitors()
+# if len(monitors) >= 2:
+#     w1, h1 = monitors[0].width, monitors[0].height
+#     w2, h2 = monitors[1].width, monitors[1].height
+#     WINDOW_LOC = (w1 + int(w2 / 8), int(h1 / 8))
+# else:
+WINDOW_LOC = (None, None)
 
 
 # The StateMachine functions is to keep track of the graph
@@ -39,6 +39,8 @@ class WindowStateMachine():
         self.column_width = data["column_width"]
         self.dynamic_lm = data["dynamic_lm"]
         self.shift_mode = data["shift_mode"]
+        self.graph_w = data["graph_w"]
+        self.graph_h = data["graph_h"]
         self.store_mouse = None  # For storing mouse location in shift_mode
         # Load num_lm correctly if user have annotated in last session
         image_name = self.all_image_rel_paths[self.pointer]
@@ -68,7 +70,7 @@ class WindowStateMachine():
         # Load current image for user to annotate
         im = Image.open(os.path.join(self.dir, img_name))
         w, h = im.size
-        im = im.resize((self.image_gap, self.image_gap),
+        im = im.resize((self.graph_w, self.graph_h),
                        resample=Image.BICUBIC)
         with io.BytesIO() as output:
             im.save(output, format="PNG")
@@ -138,6 +140,7 @@ class WindowStateMachine():
         self.load_template()
 
     def fill_json(self):
+        # Based on "xy" coordinates in json file, create "mouse_xy".
         with open(self.annotation_json, "r") as f:
             data = json.load(f)
         for img_name, coor_info in data.items():
@@ -148,8 +151,8 @@ class WindowStateMachine():
             w, h = im.size
             np_coorinfo = np.array(coor_info["xy"])  # Size (n, 2)
             mouses = np.zeros(np_coorinfo.shape)
-            mouses[:, 0] = (np_coorinfo[:, 0] * self.image_gap / w).round()
-            mouses[:, 1] = (np_coorinfo[:, 1] * self.image_gap / h).round()
+            mouses[:, 0] = (np_coorinfo[:, 0] * self.graph_w / w).round()
+            mouses[:, 1] = (np_coorinfo[:, 1] * self.graph_h / h).round()
             data[img_name]["mouse_xy"] = list(mouses)
         pretty_dump(data, self.annotation_json)
 
@@ -194,14 +197,14 @@ class WindowStateMachine():
     def mouse_to_xy(self, mouse):
         x, y = mouse[0], mouse[1]
         ori_w, ori_h = self.image_original
-        x = int(x * ori_w / self.image_gap)
-        y = int(y * ori_h / self.image_gap)
+        x = int(x * ori_w / self.graph_w)
+        y = int(y * ori_h / self.graph_h)
         return x, y
 
     def xy_to_mouse(self, xy):
         ori_w, ori_h = self.image_original
-        mouse_x = int(xy[0] * self.image_gap / ori_w)
-        mouse_y = int(xy[1] * self.image_gap / ori_h)
+        mouse_x = int(xy[0] * self.graph_w / ori_w)
+        mouse_y = int(xy[1] * self.graph_h / ori_h)
         return mouse_x, mouse_y
 
     def plot_point(self, mouse):
@@ -334,7 +337,7 @@ class WindowStateMachine():
         # Load current image for user to annotate
         im = Image.open(os.path.join(self.dir, img_name))
         w, h = im.size
-        im = im.resize((self.image_gap, self.image_gap),
+        im = im.resize((self.graph_w, self.graph_h),
                        resample=Image.BICUBIC)
         with io.BytesIO() as output:
             im.save(output, format="PNG")
@@ -371,7 +374,7 @@ class WindowStateMachine():
         img_name = self.all_image_rel_paths[self.pointer]
         im = Image.open(os.path.join(self.dir, img_name))
         w, h = im.size
-        im = im.resize((self.image_gap, self.image_gap),
+        im = im.resize((self.graph_w, self.graph_h),
                        resample=Image.BICUBIC)
         with io.BytesIO() as output:
             im.save(output, format="PNG")

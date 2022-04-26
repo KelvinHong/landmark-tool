@@ -18,13 +18,13 @@ CACHE = "cachefile.json"
 ANNOTATION = "annotation/"
 
 # Detect double monitor
-monitors = screeninfo.get_monitors()
-if len(monitors) >= 2:
-    w1, h1 = monitors[0].width, monitors[0].height
-    w2, h2 = monitors[1].width, monitors[1].height
-    WINDOW_LOC = (w1 + int(w2 / 8), int(h2 / 8))
-else:
-    WINDOW_LOC = (None, None)
+# monitors = screeninfo.get_monitors()
+# if len(monitors) >= 2:
+#     w1, h1 = monitors[0].width, monitors[0].height
+#     w2, h2 = monitors[1].width, monitors[1].height
+#     WINDOW_LOC = (w1 + int(w2 / 8), int(h2 / 8))
+# else:
+WINDOW_LOC = (None, None)
 # General window information
 w, h = sg.Window.get_screen_size()
 image_gap = int(0.72 * h)
@@ -200,8 +200,9 @@ def annotate():
         else:
             total_num_lm = None
     w, h = sg.Window.get_screen_size()
-    image_gap = int(0.72 * h)
+    image_gap = min(int(0.72 * h), int(0.4 * w)) 
     column_width = int(0.25 * w)
+    graph_w, graph_h = int(w / 2.5), int(h * 0.7)
 
     image_filetypes = [
         ("All files (*.*)", "*.*"),
@@ -216,7 +217,7 @@ def annotate():
             sg.ProgressBar(max_value=10,
                            orientation="horizontal",
                            bar_color=("green", "white"),
-                           size=(30, 10),
+                           size_px=(int(0.25*w), 10),
                            key="-LBAR-"),
         ]
     else:
@@ -234,7 +235,7 @@ def annotate():
              sg.ProgressBar(max_value=10,
                             orientation="horizontal",
                             bar_color=("green", "white"),
-                            size=(30, 10),
+                            size_px=(int(0.25*w), 10),
                             key="-PBAR-"),
          ], landmark_element,
          [
@@ -282,9 +283,9 @@ def annotate():
             [
                 sg.Button("<", key="-PREV-"),
                 sg.Graph(
-                    canvas_size=(image_gap, image_gap),
-                    graph_bottom_left=(0, image_gap),
-                    graph_top_right=(image_gap, 0),
+                    canvas_size=(graph_w, graph_h),
+                    graph_bottom_left=(0, graph_h),
+                    graph_top_right=(graph_w, 0),
                     key="-GRAPH-",
                     change_submits=True,  # mouse click events
                     background_color='white',
@@ -351,6 +352,8 @@ def annotate():
         "column_width": column_width,
         "dynamic_lm": dynamic_lm,
         "shift_mode": False,  # Toggle mode 
+        "graph_w": graph_w,
+        "graph_h": graph_h,
     }
     # Load template image if exist
     if os.path.isfile(CACHE):
@@ -416,9 +419,9 @@ def annotate():
 
         elif event == '-PREV-' and WSM.pointer != 0:
             WSM.prev_image()
-        elif event == "-UNDO-":
+        elif event == "-UNDO-" and not WSM.shift_mode: # cannot perform undo during shifting mode.
             WSM.undo_landmark()
-        elif event == "-REDO-":
+        elif event == "-REDO-" and not WSM.shift_mode: # cannot perform redo during shifting mode.
             WSM.renew_annotate(request="redo")
             WSM.table_prompt("REDO: Table has been cleared.")
         elif event == "-SHIFT-":
