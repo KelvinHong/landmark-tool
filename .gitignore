@@ -2,6 +2,7 @@ venv/
 todo.txt
 cachefile.json
 annotation/*
+ann_transformer.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -172,8 +172,10 @@ def input_info():
                     sg.popup(message, location=WINDOW_LOC)
                     continue
             # If all validations passed, store the variables in a file.
-
+            prev_dir = store["-FOLDER-"]
             store.update({"-FOLDER-": dataset_Dir, "-DYNAMIC-": dynamic_lm})
+            if prev_dir != store["-FOLDER-"]: # User choose a new folder to work with
+                store["pointer"] = 0
             if not dynamic_lm:
                 store["-NUMLM-"] = int(num_lm)
             elif "-NUMLM-" in store:
